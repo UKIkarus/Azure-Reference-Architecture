@@ -1,0 +1,69 @@
+# .ps-rule/ps-rule.yaml
+# PSRule for Azure - options file (flat format, NOT CRD apiVersion/kind/spec).
+# PSRule reads configuration, binding, rule, and output from top-level keys only.
+# The apiVersion/kind/spec wrapper is for named baselines/resources, not option files.
+# Reference: https://azure.github.io/PSRule.Rules.Azure/
+
+configuration:
+  # Use az bicep (Azure CLI) instead of standalone bicep binary.
+  # Required when only az bicep is installed, not a standalone bicep binary.
+  AZURE_BICEP_USE_AZURE_CLI: true
+
+  # Expand .bicep source files into ARM before running rules.
+  # Without this, PSRule silently skips .bicep files.
+  AZURE_BICEP_FILE_EXPANSION: true
+
+  # Resolve parameter values from the paired .bicepparam file.
+  # Enables rules (including Local.Rule.ps1) to see actual tag values
+  # rather than ARM parameter-reference expressions.
+  AZURE_BICEP_PARAMS_FILE_EXPANSION: true
+
+  # Extend compilation timeout beyond the 5s default.
+  # main.bicep with AVM registry modules takes ~9s to compile on this machine.
+  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
+
+binding:
+  # Prefer 'name' then 'resourceName' for display in reports
+  targetName:
+   - name
+   - resourceName
+
+# NOTE: rule.include with wildcard patterns (e.g. Azure.VirtualNetwork.*) causes
+# OperationStopped in PSRule v2.9.0 - "Wildcard match requires exactly one name".
+# Rule filtering is handled via a Baseline resource in .ps-rule/Baselines.Rule.yaml
+# (not yet created). For now, all applicable Azure.* rules are evaluated.
+
+# Baseline is applied via -Baseline 'Local.AzureNetworking' in _psrule-run.ps1.
+# See .ps-rule/Baselines.Rule.yaml - baseline.default is not a valid PSRule v2 option.
+
+# ── Suppressions ─────────────────────────────────────────────────────────────
+# Suppress specific rules for specific named resources where the finding is either
+# a known platform constraint or deferred to a later module.
+suppression:
+  # ExpressRoute gateway maintenance window - deferred to module 04 (Observability & Policy).
+  # The AVM virtual-network-gateway v0.11.1 module does not expose a
+  # maintenanceConfigurationResourceId parameter. A standalone
+  # Microsoft.Maintenance/maintenanceConfigurations resource + assignment is required
+  # and will be implemented alongside Azure Policy in module 04.
+  Azure.VNG.MaintenanceConfig:
+   - dev-hub-ergw
+
+  # Log Analytics cross-region replication - deferred to module 05 (Multi-Region DR).
+  # Workspace replication requires a secondary region and paired workspace, which is
+  # out of scope for the core networking bootstrap. Will be configured when the
+  # DR/failover topology is established in module 05.
+  Azure.Log.Replication:
+   - dev-hub-law
+
+  # Bastion subnet NSG - Azure Bastion is explicitly designed to initiate SSH/RDP
+  # sessions to target VMs. The outbound Allow-SSH and Allow-RDP rules on
+  # dev-hub-bastion-nsg are mandatory for Bastion to function and are NOT lateral
+  # traversal; they are scoped to VirtualNetwork only (not Internet).
+  Azure.NSG.LateralTraversal:
+   - dev-hub-bastion-nsg
+
+output:
+  # en-GB locale for output messages
+  culture:
+   - en-GB
+

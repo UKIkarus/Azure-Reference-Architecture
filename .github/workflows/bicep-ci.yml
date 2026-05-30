@@ -1,0 +1,187 @@
+# .github/workflows/bicep-ci.yml
+#
+# Bicep CI/CD pipeline - validates all Bicep modules in this repository.
+#
+# Triggers:
+#   • Pull request to main - full validation gate (must pass before merge)
+#   • Push to main - what-if gate confirming the merged state is deployment-ready
+#
+# Pipeline policy: every step must pass before the next runs.
+# Any failure (secret scan, lint, build, PSRule, what-if) halts the pipeline immediately.
+# Do NOT add continue-on-error to any step.
+#
+# Authentication: OIDC federated identity only. Client secrets are prohibited.
+# Store as GitHub Actions repository variables (not secrets):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RG
+#
+# See "OIDC federated credential setup" for bootstrap commands.
+# These variables contain non-sensitive IDs and are safe to store as variables (not secrets).
+
+name: Bicep CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/bicep/**.bicep'
+      - '**/bicep/**.bicepparam'
+      - '.github/workflows/bicep-ci.yml'
+      - '.ps-rule/**'
+      - 'bicepconfig.json'
+  push:
+    branches: [main]
+    paths:
+      - '**/bicep/**.bicep'
+      - '**/bicep/**.bicepparam'
+
+# Minimum required permissions for OIDC token request and PR annotation
+permissions:
+  id-token: write      # Required: request OIDC JWT token from GitHub
+  contents: read       # Required: checkout source code
+  pull-requests: write # Required: annotate PR with PSRule SARIF results
+
+# Module matrix - add new entries as modules are built out
+# Each entry defines the entry-point bicep file and its parameter file
+env:
+  BICEP_FILE:  '01-Core-Networking/bicep/main.bicep'
+  PARAM_FILE:  '01-Core-Networking/bicep/main.bicepparam'
+
+jobs:
+  # ── Validation ──────────────────────────────────────────────────────────────
+  # Runs on every PR and push to main.
+  # Validates: secret scan → lint → build → PSRule → what-if
+  validate:
+    name: Validate Bicep modules
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history required for betterleaks git history scan
+          fetch-depth: 0
+
+      # ── Step 1: Secret scan - betterleaks ─────────────────────────────────
+      # Scans entire git history for secrets, API keys, connection strings.
+      # Exit code 1 on any finding - pipeline stops here and reports findings.
+      # betterleaks is preferred over detect-secrets: scans git history, not just working tree.
+      - name: Install betterleaks
+        run: |
+          curl -sSL https://github.com/betterleaks/betterleaks/releases/latest/download/betterleaks_linux_amd64.tar.gz \
+            | tar xz -C /tmp
+          sudo mv /tmp/betterleaks /usr/local/bin/betterleaks
+
+      - name: Run betterleaks secret scan
+        run: betterleaks git . -v
+        # Exit code 1 on any secret found - pipeline halts and reports the finding.
+        # Remediate: remove the secret, rotate it, then re-run from Step 1.
+
+      # ── Step 2: Install Bicep CLI ─────────────────────────────────────────
+      - name: Install Bicep CLI
+        run: |
+          curl -Lo bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x bicep
+          sudo mv bicep /usr/local/bin/bicep
+          bicep --version
+
+      # ── Step 3: Bicep lint ────────────────────────────────────────────────
+      # Applies bicepconfig.json rules - no Azure credentials required.
+      # Errors (not warnings) from bicepconfig.json rules fail this step.
+      - name: Lint - 01-Core-Networking
+        run: bicep lint ${{ env.BICEP_FILE }} --diagnostics-format sarif 2>&1 | tee reports/lint.sarif
+
+      # ── Step 4: Bicep build ───────────────────────────────────────────────
+      # Compiles to ARM JSON - catches type errors, schema violations, BCP diagnostics.
+      - name: Build - 01-Core-Networking main.bicep
+        run: bicep build ${{ env.BICEP_FILE }}
+
+      - name: Build - 01-Core-Networking main.bicepparam
+        run: bicep build-params ${{ env.PARAM_FILE }}
+
+      # ── Step 5: PSRule for Azure ──────────────────────────────────────────
+      # Validates WAF alignment and Azure best practices.
+      # Rule scope defined in .ps-rule/ps-rule.yaml - only relevant rules are active.
+      # SARIF output uploaded as a build artefact and optionally to GitHub Advanced Security.
+      - name: Run PSRule for Azure
+        uses: microsoft/ps-rule@v2
+        with:
+          modules: PSRule.Rules.Azure
+          inputPath: '**/bicep/*.bicep'
+          outputFormat: Sarif
+          outputPath: reports/psrule.sarif
+
+      - name: Upload PSRule SARIF report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: psrule-sarif
+          path: reports/psrule.sarif
+
+      # ── Step 6: OIDC login ────────────────────────────────────────────────
+      # Federated identity only - no client secrets.
+      # Variables (not secrets) are safe to store in GitHub repository settings.
+      # Bootstrap: see "OIDC federated credential setup".
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Step 7: What-if (required gate) ──────────────────────────────────
+      # Read-only preview of what Azure would change if the template were deployed.
+      # Acceptable result: zero unexpected Modify or Delete changes on a net-new template.
+      # Unexpected changes must be explained and approved before the PR can merge.
+      - name: What-if - 01-Core-Networking
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          resourceGroupName: ${{ vars.AZURE_RG }}
+          template:   ${{ env.BICEP_FILE }}
+          parameters: ${{ env.PARAM_FILE }}
+          additionalArguments: '--what-if'
+        # What-if is a read-only operation - no resources are created or modified.
+        # A non-zero exit code means the template has errors or unexpected changes.
+
+  # ── Deploy (manual trigger only - never runs automatically) ───────────────
+  # Deployment via Bicep Stacks provides state management and drift protection.
+  # This job is NEVER triggered automatically - it requires explicit workflow_dispatch.
+  # Before deploying, confirm what-if passed in the validate job above.
+  deploy:
+    name: Deploy via Bicep Stack (manual only)
+    runs-on: ubuntu-latest
+    needs: validate
+    # workflow_dispatch only - never deploy on push or PR automatically
+    if: github.event_name == 'workflow_dispatch'
+    environment: production  # Requires manual approval gate in GitHub Environments
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        run: |
+          curl -Lo bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Deploy via Bicep Stack - provides lifecycle management and drift protection.
+      # denyWriteAndDelete blocks all portal writes and deletes on stack-managed resources.
+      # deleteResources removes Azure resources when removed from the template (no orphans).
+      - name: Deploy stack - 01-Core-Networking
+        run: |
+          az stack group create \
+            --name '01-core-networking' \
+            --resource-group ${{ vars.AZURE_RG }} \
+            --template-file ${{ env.BICEP_FILE }} \
+            --parameters ${{ env.PARAM_FILE }} \
+            --deny-settings-mode denyWriteAndDelete \
+            --action-on-unmanage deleteResources \
+            --yes

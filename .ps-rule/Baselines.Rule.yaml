@@ -1,0 +1,30 @@
+# .ps-rule/Baselines.Rule.yaml
+# PSRule Baseline resource - scopes the CI rule set to Security and Reliability
+# WAF pillars only.
+#
+# Why not Operational Excellence / Cost / Performance?
+#  - Operational Excellence (147 rules): naming conventions, diagnostic settings -
+#     advisory rather than hard-gate material for CI.
+#  - Cost Optimization (19 rules): infrastructure sizing - not a CI concern.
+#  - Performance Efficiency (18 rules): scaling config - not a CI concern.
+#
+# This reduces from 519 rules to 333 (Security=232, Reliability=101), which cuts
+# per-run rule×resource combinations from ~128k to ~80k while keeping all currently
+# failing checks (NSG lateral traversal, Firewall policy mode, VNet NSG coverage,
+# Storage replication/local auth, Log Analytics replication, VNG maintenance config).
+#
+# To reference this baseline: -Baseline 'Local.AzureNetworking' on Invoke-PSRule,
+# or set baseline.default in ps-rule.yaml.
+---
+apiVersion: github.com/microsoft/PSRule/v1
+kind: Baseline
+metadata:
+  name: Local.AzureNetworking
+  annotations:
+    description: "CI baseline - Security + Reliability WAF pillars only"
+spec:
+  rule:
+    tag:
+      'Azure.WAF/pillar':
+       - Security
+       - Reliability

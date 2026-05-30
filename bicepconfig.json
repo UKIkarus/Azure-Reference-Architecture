@@ -1,0 +1,59 @@
+{
+  // Workspace-level Bicep configuration.
+  // Enforces AVM-first linting rules across all modules in this repository.
+  // br/public is a built-in Bicep alias (mcr.microsoft.com/bicep/public) - no override needed.
+  "$schema": "https://aka.ms/bicep/schema/bicepconfig.json",
+
+  "analyzers": {
+    "core": {
+      "enabled": true,
+      "verbose": false,
+      "rules": {
+        // Fail on any hardcoded environment URLs (storage, vault, etc.)
+        "no-hardcoded-env-urls": { "level": "error" },
+
+        // Unused params/vars are dead code and a maintenance hazard
+        "no-unused-params": { "level": "error" },
+        "no-unused-vars":   { "level": "error" },
+
+        // Prefer string interpolation over concat() for readability
+        "prefer-interpolation": { "level": "error" },
+        "simplify-interpolation": { "level": "error" },
+
+        // @secure() must be present on sensitive params - never store secrets in plaintext
+        "secure-parameter-default": { "level": "error" },
+
+        // Redundant dependsOn entries hide implicit dependencies and reduce readability
+        "no-unnecessary-dependson": { "level": "error" },
+
+        // Enforce the use of symbolic name references instead of resourceId() calls
+        // - prevents ARM string manipulation and improves type safety
+        "use-resource-id-functions": { "level": "error" },
+
+        // Warn on VM images that are not latest/stable - prevents outdated images at deploy
+        "use-stable-vm-image": { "level": "warning" },
+
+        // Warn when location params are derived inside a module rather than passed in
+        "no-loc-expr-outside-params": { "level": "warning" },
+
+        // Warn when explicit values are not provided for location params at call sites
+        "explicit-values-for-loc-params": { "level": "warning" },
+
+        // Warn when AVM module versions are not recent - keeps modules up to date
+        "use-recent-module-versions": { "level": "warning" },
+
+        // Warn on non-deterministic resource identifiers (e.g. timestamp-based names)
+        "use-stable-resource-identifiers": { "level": "warning" },
+
+        // Structural limits - warn when approaching ARM template size/complexity thresholds
+        "max-outputs":   { "level": "warning" },
+        "max-params":    { "level": "warning" },
+        "max-resources": { "level": "warning" },
+        "max-variables": { "level": "warning" },
+
+        // Warn if .bicepparam files reference parameters not declared in the template
+        "artifacts-parameters": { "level": "warning" }
+      }
+    }
+  }
+}

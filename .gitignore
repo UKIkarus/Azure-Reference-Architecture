@@ -1,6 +1,9 @@
 # Ignore workspace plans (private/not for GitHub)
 Plans/
 
+# Validation pipeline outputs - generated artifacts, not source
+reports/
+
 # Common ignores
 .vscode/
 .DS_Store
@@ -44,3 +47,6 @@ override.tf.json
 terraform.rc
 
 ./azure/
+
+06-Network-Anomaly-AI-Test/
+copilot-instructions.md
