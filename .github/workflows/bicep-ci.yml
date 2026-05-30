@@ -33,6 +33,14 @@ on:
     paths:
       - '**/bicep/**.bicep'
       - '**/bicep/**.bicepparam'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy after validation? (must be "true" to deploy - omit to validate only)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 # Minimum required permissions for OIDC token request and PR annotation
 permissions:
@@ -159,8 +167,9 @@ jobs:
     name: Deploy via Bicep Stack (manual only)
     runs-on: ubuntu-latest
     needs: validate
-    # workflow_dispatch only - never deploy on push or PR automatically
-    if: github.event_name == 'workflow_dispatch'
+    # Only runs when explicitly requested AND the deploy input is set to 'true'.
+    # A plain workflow_dispatch (validate-only run) will skip this job entirely.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true'
     environment: production  # Requires manual approval gate in GitHub Environments
 
     steps:
