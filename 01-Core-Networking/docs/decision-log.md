@@ -170,6 +170,22 @@
 
 ---
 
+## ADR-11: Resource group scope over subscription scope for this module
+
+**Decision:** `main.bicep` targets `targetScope = 'resourceGroup'`. The resource group is pre-created by the CI pipeline (`az group create`) before what-if and deploy steps run.
+
+**Rationale:**
+- This module is a self-contained reference implementation for a single networking pattern. Resource group scope keeps the template focused and avoids requiring subscription-level `Microsoft.Resources/resourceGroups` write permissions on the service principal, which some organisations restrict.
+- The CI pipeline creates the resource group idempotently (`az group create` is a no-op if it already exists), so there is no manual bootstrap step required.
+
+**In production, subscription scope is recommended.** A production landing zone would use `targetScope = 'subscription'` (or `'managementGroup'` in an ALZ context), declare the resource group as a Bicep resource, and pass the RG as a `scope:` on each module call. This removes the pre-step dependency and makes the template fully self-contained - deploying from nothing to a complete environment in one operation. The CI pipeline scope would also change from `scope: resourcegroup` to `scope: subscription` in the `azure/arm-deploy@v2` what-if step, and the Bicep Stack would use `az stack sub create` rather than `az stack group create`.
+
+**Alternatives considered:**
+- **Subscription scope now**: correct long-term pattern but requires restructuring `main.bicep` and all child module `scope:` references, adding a `resourceGroup` resource declaration, and updating the stack commands. Deferred to keep this module focused on networking patterns rather than IaC scaffolding patterns.
+- **Management group scope**: appropriate only in a full ALZ or multi-subscription deployment. Out of scope for this module.
+
+---
+
 ## Network topology summary
 
 ```

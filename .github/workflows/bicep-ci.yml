@@ -12,7 +12,7 @@
 #
 # Authentication: OIDC federated identity only. Client secrets are prohibited.
 # Store as GitHub Actions repository variables (not secrets):
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RG
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_RG_LOCATION
 #
 # See "OIDC federated credential setup" for bootstrap commands.
 # These variables contain non-sensitive IDs and are safe to store as variables (not secrets).
@@ -144,6 +144,16 @@ jobs:
           tenant-id:       ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # ── Step 6a: Ensure resource group exists ─────────────────────────────
+      # This module deploys at resourceGroup scope (ADR-11). The RG must exist
+      # before what-if or deploy can run. az group create is idempotent.
+      - name: Ensure resource group exists
+        run: |
+          az group create \
+            --name        ${{ vars.AZURE_RG }} \
+            --location    ${{ vars.AZURE_RG_LOCATION }} \
+            --tags        module=01-core-networking managed-by=bicep-ci
+
       # ── Step 7: What-if (required gate) ──────────────────────────────────
       # Read-only preview of what Azure would change if the template were deployed.
       # Acceptable result: zero unexpected Modify or Delete changes on a net-new template.
@@ -187,6 +197,13 @@ jobs:
           client-id:       ${{ vars.AZURE_CLIENT_ID }}
           tenant-id:       ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group exists
+        run: |
+          az group create \
+            --name        ${{ vars.AZURE_RG }} \
+            --location    ${{ vars.AZURE_RG_LOCATION }} \
+            --tags        module=01-core-networking managed-by=bicep-ci
 
       # Deploy via Bicep Stack - provides lifecycle management and drift protection.
       # denyWriteAndDelete blocks all portal writes and deletes on stack-managed resources.

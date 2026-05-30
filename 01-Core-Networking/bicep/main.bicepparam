@@ -12,7 +12,7 @@
 using 'main.bicep'
 
 // Target Azure region for all resources
-param location = 'uksouth'
+param location = 'westeurope'
 
 // Environment name; controls naming and tagging
 param environment = 'dev'
