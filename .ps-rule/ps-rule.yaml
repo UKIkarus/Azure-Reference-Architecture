@@ -5,9 +5,11 @@
 # Reference: https://azure.github.io/PSRule.Rules.Azure/
 
 configuration:
-  # Use az bicep (Azure CLI) instead of standalone bicep binary.
-  # Required when only az bicep is installed, not a standalone bicep binary.
-  AZURE_BICEP_USE_AZURE_CLI: true
+  # Use standalone bicep binary resolved via PSRULE_AZURE_BICEP_PATH (set in _psrule-run.ps1).
+  # In CI the binary is at /usr/local/bin/bicep; locally at ~/.azure/bin/bicep.
+  # Setting this to false (the default) means PSRule uses PSRULE_AZURE_BICEP_PATH directly
+  # rather than routing through 'az bicep build', which requires az to be in PATH.
+  AZURE_BICEP_USE_AZURE_CLI: false
 
   # Expand .bicep source files into ARM before running rules.
   # Without this, PSRule silently skips .bicep files.

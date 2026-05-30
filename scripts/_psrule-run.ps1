@@ -74,11 +74,24 @@ if ($sarifDir -and -not (Test-Path $sarifDir)) {
 # values from the paired .bicepparam file (AZURE_BICEP_PARAMS_FILE_EXPANSION: true).
 Write-Host "[psrule-run] Invoking PSRule.Rules.Azure against: $BicepFile"
 
-# Point PSRule to the az bicep binary - no standalone 'bicep' binary at PATH.
-# az bicep installs its binary to ~/.azure/bin/bicep; PSRule finds it via this var.
-$env:PSRULE_AZURE_BICEP_PATH = "$env:HOME/.azure/bin/bicep"
-if (-not (Test-Path $env:PSRULE_AZURE_BICEP_PATH)) {
-    Write-Host "[psrule-run] WARN: bicep binary not found at $($env:PSRULE_AZURE_BICEP_PATH). Bicep expansion may fail."
+# Resolve the bicep binary path for PSRule.
+# Priority: standalone binary on PATH (present in CI at /usr/local/bin/bicep)
+#       then: az bicep install location (~/.azure/bin/bicep, present locally)
+# PSRULE_AZURE_BICEP_PATH is used when AZURE_BICEP_USE_AZURE_CLI is false (ps-rule.yaml).
+$bicepFromPath = (Get-Command bicep -ErrorAction SilentlyContinue)?.Source
+$bicepFromAz   = "$env:HOME/.azure/bin/bicep"
+$resolvedBicep = if ($bicepFromPath -and (Test-Path $bicepFromPath)) {
+    $bicepFromPath
+} elseif (Test-Path $bicepFromAz) {
+    $bicepFromAz
+} else {
+    $null
+}
+if ($resolvedBicep) {
+    $env:PSRULE_AZURE_BICEP_PATH = $resolvedBicep
+    Write-Host "[psrule-run] Using bicep at: $resolvedBicep"
+} else {
+    Write-Host "[psrule-run] WARN: bicep binary not found in PATH or at $bicepFromAz. Bicep expansion may fail."
 }
 
 if (-not (Test-Path $BicepFile)) {
