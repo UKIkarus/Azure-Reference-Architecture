@@ -94,7 +94,9 @@ jobs:
       # Applies bicepconfig.json rules - no Azure credentials required.
       # Errors (not warnings) from bicepconfig.json rules fail this step.
       - name: Lint - 01-Core-Networking
-        run: bicep lint ${{ env.BICEP_FILE }} --diagnostics-format sarif 2>&1 | tee reports/lint.sarif
+        run: |
+          mkdir -p reports
+          bicep lint ${{ env.BICEP_FILE }} --diagnostics-format sarif 2>&1 | tee reports/lint.sarif
 
       # ── Step 4: Bicep build ───────────────────────────────────────────────
       # Compiles to ARM JSON - catches type errors, schema violations, BCP diagnostics.
