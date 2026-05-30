@@ -97,6 +97,11 @@ jobs:
           chmod +x bicep
           sudo mv bicep /usr/local/bin/bicep
           bicep --version
+          # Also install az bicep so PSRule can find it at ~/.azure/bin/bicep.
+          # ps-rule.yaml sets AZURE_BICEP_USE_AZURE_CLI: true which routes PSRule
+          # through 'az bicep build' rather than the standalone binary.
+          # Without this, Bicep expansion silently produces 0 resources.
+          az bicep install
 
       # ── Step 3: Bicep lint ────────────────────────────────────────────────
       # Applies bicepconfig.json rules - no Azure credentials required.
@@ -115,16 +120,53 @@ jobs:
         run: bicep build-params ${{ env.PARAM_FILE }}
 
       # ── Step 5: PSRule for Azure ──────────────────────────────────────────
-      # Validates WAF alignment and Azure best practices.
-      # Rule scope defined in .ps-rule/ps-rule.yaml - only relevant rules are active.
-      # SARIF output uploaded as a build artefact and optionally to GitHub Advanced Security.
+      # Runs the same script as 'bash scripts/validate-local.sh' locally.
+      # Using the script (rather than microsoft/ps-rule@v2) ensures:
+      #   - Identical baseline (Local.AzureNetworking - Security + Reliability only)
+      #   - Identical Bicep expansion path (AZURE_BICEP_USE_AZURE_CLI via az bicep)
+      #   - Identical summary output format (PSRULE_SUMMARY:Pass=N;Fail=N)
+      #   - Suppression rules from ps-rule.yaml applied consistently
       - name: Run PSRule for Azure
-        uses: microsoft/ps-rule@v2
-        with:
-          modules: PSRule.Rules.Azure
-          inputPath: '**/bicep/*.bicep'
-          outputFormat: Sarif
-          outputPath: reports/psrule.sarif
+        id: psrule
+        run: |
+          set +e
+          OUTPUT=$(pwsh scripts/_psrule-run.ps1 -BicepFile '${{ env.BICEP_FILE }}' -SarifOut reports/psrule.sarif 2>&1)
+          EXIT=$?
+          echo "$OUTPUT"
+          # Extract summary line for the job summary step
+          SUMMARY=$(echo "$OUTPUT" | grep 'PSRULE_SUMMARY:' | tail -1 | sed 's/PSRULE_SUMMARY://')
+          echo "psrule_summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+          exit $EXIT
+
+      - name: PSRule summary
+        if: always()
+        run: |
+          SUMMARY="${{ steps.psrule.outputs.psrule_summary }}"
+          # Parse Pass=N;Fail=N;Error=N;Resources=N into individual values
+          PASS=$(echo    "$SUMMARY" | grep -oP 'Pass=\K\d+')
+          FAIL=$(echo    "$SUMMARY" | grep -oP 'Fail=\K\d+')
+          ERROR=$(echo   "$SUMMARY" | grep -oP 'Error=\K\d+')
+          RESOURCES=$(echo "$SUMMARY" | grep -oP 'Resources=\K\d+')
+          PASS=${PASS:-0}; FAIL=${FAIL:-0}; ERROR=${ERROR:-0}; RESOURCES=${RESOURCES:-0}
+
+          if   [[ "$FAIL" -gt 0 || "$ERROR" -gt 0 ]]; then BADGE="❌ Failed"
+          elif [[ "$PASS" -gt 0 ]];                    then BADGE="✅ Passed"
+          else                                               BADGE="⚠️ No results"
+          fi
+
+          {
+            echo "## PSRule for Azure - 01-Core-Networking"
+            echo ""
+            echo "| | Count |"
+            echo "|---|---|"
+            echo "| ✅ Pass | $PASS |"
+            echo "| ❌ Fail | $FAIL |"
+            echo "| 🔴 Error | $ERROR |"
+            echo "| 📦 Resources evaluated | $RESOURCES |"
+            echo ""
+            echo "**Baseline:** \`Local.AzureNetworking\` (Security + Reliability — $(( PASS + FAIL + ERROR )) checks)"
+            echo "**Result:** $BADGE"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload PSRule SARIF report
         uses: actions/upload-artifact@v4
