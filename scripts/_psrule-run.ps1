@@ -99,6 +99,21 @@ if (-not (Test-Path $BicepFile)) {
     exit 2
 }
 
+# ── Resolve input path ───────────────────────────────────────────────────────
+# When a paired .bicepparam exists, use it as -InputPath.
+# PSRule with AZURE_BICEP_PARAMS_FILE_EXPANSION: true pairs the .bicepparam with
+# its linked .bicep file and fully resolves all parameter values before running rules.
+# Without this, PSRule expands the .bicep file using only its own default values,
+# so tag params always appear as 'Missing X' regardless of what the param file sets.
+$ParamFile = [System.IO.Path]::ChangeExtension($BicepFile, '.bicepparam')
+$psruleInput = if (Test-Path $ParamFile) {
+    Write-Host "[psrule-run] Using bicepparam for full parameter resolution: $ParamFile"
+    $ParamFile
+} else {
+    Write-Host "[psrule-run] No paired .bicepparam found - using bicep file (params will use defaults): $BicepFile"
+    $BicepFile
+}
+
 # Load PSRule options explicitly - PSRule auto-discovers ./ps-rule.yaml (CWD root)
 # but NOT ./.ps-rule/ps-rule.yaml (the directory form needs explicit -Path).
 # Without this, AZURE_BICEP_FILE_EXPANSION stays false and Bicep expansion never fires.
@@ -122,7 +137,7 @@ try {
     # Using Fail,Pass,Error keeps $results to only actionable rule evaluations.
     $results = @(
         Invoke-PSRule `
-           -InputPath $BicepFile `
+           -InputPath $psruleInput `
            -Module 'PSRule.Rules.Azure' `
            -Option $opts `
            -Baseline 'Local.AzureNetworking' `
@@ -140,7 +155,7 @@ catch {
 # ── Export SARIF (separate pass - -OutputPath suppresses pipeline output if combined) ─
 try {
     $null = Invoke-PSRule `
-       -InputPath $BicepFile `
+       -InputPath $psruleInput `
        -Module 'PSRule.Rules.Azure' `
        -Option $opts `
        -Baseline 'Local.AzureNetworking' `
