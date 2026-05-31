@@ -86,6 +86,7 @@ jobs:
           sudo mv /tmp/betterleaks /usr/local/bin/betterleaks
 
       - name: Run betterleaks secret scan
+        id: secrets
         run: betterleaks git . -v
         # Exit code 1 on any secret found - pipeline halts and reports the finding.
         # Remediate: remove the secret, rotate it, then re-run from Step 1.
@@ -107,6 +108,7 @@ jobs:
       # Applies bicepconfig.json rules - no Azure credentials required.
       # Errors (not warnings) from bicepconfig.json rules fail this step.
       - name: Lint - 01-Core-Networking
+        id: lint
         run: |
           mkdir -p reports
           bicep lint ${{ env.BICEP_FILE }} --diagnostics-format sarif 2>&1 | tee reports/lint.sarif
@@ -114,15 +116,17 @@ jobs:
       # ── Step 4: Bicep build ───────────────────────────────────────────────
       # Compiles to ARM JSON - catches type errors, schema violations, BCP diagnostics.
       - name: Build - 01-Core-Networking main.bicep
+        id: build_main
         run: bicep build ${{ env.BICEP_FILE }}
 
       - name: Build - 01-Core-Networking main.bicepparam
+        id: build_params
         run: bicep build-params ${{ env.PARAM_FILE }}
 
       # ── Step 5: PSRule for Azure ──────────────────────────────────────────
       # Runs the same script as 'bash scripts/validate-local.sh' locally.
       # Using the script (rather than microsoft/ps-rule@v2) ensures:
-      #   - Identical baseline (Local.AzureNetworking - Security + Reliability only)
+          #   - Identical baseline (Local.SecurityAndReliability - Security + Reliability, all resource types)
       #   - Identical Bicep expansion path (AZURE_BICEP_USE_AZURE_CLI via az bicep)
       #   - Identical summary output format (PSRULE_SUMMARY:Pass=N;Fail=N)
       #   - Suppression rules from ps-rule.yaml applied consistently
@@ -137,36 +141,6 @@ jobs:
           SUMMARY=$(echo "$OUTPUT" | grep 'PSRULE_SUMMARY:' | tail -1 | sed 's/PSRULE_SUMMARY://')
           echo "psrule_summary=$SUMMARY" >> "$GITHUB_OUTPUT"
           exit $EXIT
-
-      - name: PSRule summary
-        if: always()
-        run: |
-          SUMMARY="${{ steps.psrule.outputs.psrule_summary }}"
-          # Parse Pass=N;Fail=N;Error=N;Resources=N into individual values
-          PASS=$(echo    "$SUMMARY" | grep -oP 'Pass=\K\d+')
-          FAIL=$(echo    "$SUMMARY" | grep -oP 'Fail=\K\d+')
-          ERROR=$(echo   "$SUMMARY" | grep -oP 'Error=\K\d+')
-          RESOURCES=$(echo "$SUMMARY" | grep -oP 'Resources=\K\d+')
-          PASS=${PASS:-0}; FAIL=${FAIL:-0}; ERROR=${ERROR:-0}; RESOURCES=${RESOURCES:-0}
-
-          if   [[ "$FAIL" -gt 0 || "$ERROR" -gt 0 ]]; then BADGE="❌ Failed"
-          elif [[ "$PASS" -gt 0 ]];                    then BADGE="✅ Passed"
-          else                                               BADGE="⚠️ No results"
-          fi
-
-          {
-            echo "## PSRule for Azure - 01-Core-Networking"
-            echo ""
-            echo "| | Count |"
-            echo "|---|---|"
-            echo "| ✅ Pass | $PASS |"
-            echo "| ❌ Fail | $FAIL |"
-            echo "| 🔴 Error | $ERROR |"
-            echo "| 📦 Resources evaluated | $RESOURCES |"
-            echo ""
-            echo "**Baseline:** \`Local.AzureNetworking\` (Security + Reliability — $(( PASS + FAIL + ERROR )) checks)"
-            echo "**Result:** $BADGE"
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload PSRule SARIF report
         uses: actions/upload-artifact@v4
@@ -201,6 +175,7 @@ jobs:
       # Acceptable result: zero unexpected Modify or Delete changes on a net-new template.
       # Unexpected changes must be explained and approved before the PR can merge.
       - name: What-if - 01-Core-Networking
+        id: whatif
         uses: azure/arm-deploy@v2
         with:
           scope: resourcegroup
@@ -210,6 +185,86 @@ jobs:
           additionalArguments: '--what-if'
         # What-if is a read-only operation - no resources are created or modified.
         # A non-zero exit code means the template has errors or unexpected changes.
+
+      # ── Pipeline summary ──────────────────────────────────────────────────
+      # Consolidated table written once at the end, after all steps complete.
+      # if: always() ensures the summary is written even when earlier steps fail.
+      - name: Pipeline summary
+        if: always()
+        env:
+          PSRULE_OUT: ${{ steps.psrule.outputs.psrule_summary }}
+        run: |
+          outcome_icon() {
+            case "$1" in
+              success)  echo "✅ Pass"    ;;
+              failure)  echo "❌ Fail"    ;;
+              skipped)  echo "⏭️ Skipped" ;;
+              *)        echo "⚠️ Unknown" ;;
+            esac
+          }
+
+          SECRETS_R=$(outcome_icon "${{ steps.secrets.outcome }}")
+          LINT_R=$(outcome_icon    "${{ steps.lint.outcome }}")
+          BUILD1_R=$(outcome_icon  "${{ steps.build_main.outcome }}")
+          BUILD2_R=$(outcome_icon  "${{ steps.build_params.outcome }}")
+          PSRULE_R=$(outcome_icon  "${{ steps.psrule.outcome }}")
+          WHATIF_R=$(outcome_icon  "${{ steps.whatif.outcome }}")
+
+          # Parse PSRule counts
+          PASS=$(echo "$PSRULE_OUT" | grep -oP 'Pass=\K\d+'      || echo 0)
+          FAIL=$(echo "$PSRULE_OUT" | grep -oP 'Fail=\K\d+'      || echo 0)
+          ERR=$( echo "$PSRULE_OUT" | grep -oP 'Error=\K\d+'     || echo 0)
+          RES=$( echo "$PSRULE_OUT" | grep -oP 'Resources=\K\d+' || echo 0)
+          PASS=${PASS:-0}; FAIL=${FAIL:-0}; ERR=${ERR:-0}; RES=${RES:-0}
+          PSRULE_D="Pass=${PASS} · Fail=${FAIL} · Error=${ERR} · ${RES} resources"
+
+          # Betterleaks detail
+          case "${{ steps.secrets.outcome }}" in
+            success) SECRETS_D="No secrets detected in git history" ;;
+            failure) SECRETS_D="Potential secrets found — rotate and remediate before merging" ;;
+            *)       SECRETS_D="—" ;;
+          esac
+
+          # Lint detail (exits non-zero on errors, not warnings)
+          case "${{ steps.lint.outcome }}" in
+            success) LINT_D="No errors — bicepconfig.json rules satisfied (warnings may be present)" ;;
+            failure) LINT_D="Errors detected — review lint step logs" ;;
+            *)       LINT_D="—" ;;
+          esac
+
+          # What-if detail
+          case "${{ steps.whatif.outcome }}" in
+            success) WHATIF_D="Read-only preview completed — no resources created or modified" ;;
+            failure) WHATIF_D="Unexpected changes detected — review what-if output before merging" ;;
+            skipped) WHATIF_D="Skipped (previous step failed)" ;;
+            *)       WHATIF_D="—" ;;
+          esac
+
+          # Overall result
+          OVERALL="✅ All checks passed"
+          for s in "${{ steps.secrets.outcome }}" "${{ steps.lint.outcome }}" \
+                   "${{ steps.build_main.outcome }}" "${{ steps.build_params.outcome }}" \
+                   "${{ steps.psrule.outcome }}" "${{ steps.whatif.outcome }}"; do
+            [[ "$s" == "failure" ]] && OVERALL="❌ One or more checks failed" && break
+          done
+
+          {
+            echo "## 🔍 Validation Pipeline — 01-Core-Networking"
+            echo ""
+            echo "| Step | Result | Detail |"
+            echo "|------|--------|--------|"
+            echo "| 🔐 Secret Scan (betterleaks) | ${SECRETS_R} | ${SECRETS_D} |"
+            echo "| 📋 Bicep Lint | ${LINT_R} | ${LINT_D} |"
+            echo "| 🔨 Bicep Build — \`main.bicep\` | ${BUILD1_R} | Compiled to ARM JSON |"
+            echo "| 🔨 Bicep Build — \`main.bicepparam\` | ${BUILD2_R} | Parameter file compiled |"
+            echo "| 🛡️ PSRule for Azure | ${PSRULE_R} | ${PSRULE_D} |"
+            echo "| 🔍 What-If | ${WHATIF_R} | ${WHATIF_D} |"
+            echo ""
+            echo "> **Baseline:** \`Local.SecurityAndReliability\` · Security + Reliability WAF pillars (all resource types)"
+            echo ""
+            echo "---"
+            echo "**${OVERALL}**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Deploy (manual trigger only - never runs automatically) ───────────────
   # Deployment via Bicep Stacks provides state management and drift protection.

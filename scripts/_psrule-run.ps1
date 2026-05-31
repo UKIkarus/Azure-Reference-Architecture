@@ -140,7 +140,7 @@ try {
            -InputPath $psruleInput `
            -Module 'PSRule.Rules.Azure' `
            -Option $opts `
-           -Baseline 'Local.AzureNetworking' `
+           -Baseline 'Local.SecurityAndReliability' `
            -Path '.' `
            -Outcome Fail,Pass,Error `
            -WarningAction SilentlyContinue `
@@ -158,7 +158,7 @@ try {
        -InputPath $psruleInput `
        -Module 'PSRule.Rules.Azure' `
        -Option $opts `
-       -Baseline 'Local.AzureNetworking' `
+       -Baseline 'Local.SecurityAndReliability' `
        -Path '.' `
        -Outcome Fail,Pass,Error `
        -OutputFormat Sarif `

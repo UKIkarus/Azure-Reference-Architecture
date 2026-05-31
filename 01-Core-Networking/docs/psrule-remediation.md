@@ -1,7 +1,7 @@
 # PSRule Remediation Report: 01-Core-Networking
 
 > **WAF Baseline:** Security + Reliability pillars (333 of 519 rules)  
-> **Tool:** PSRule.Rules.Azure v1.47.0 with `Local.AzureNetworking` baseline  
+> **Tool:** PSRule.Rules.Azure v1.47.0 with `Local.SecurityAndReliability` baseline  
 > **Evaluated resources:** 162 unique Azure resources expanded from `main.bicep` via `az bicep`
 
 ---

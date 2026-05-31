@@ -1,6 +1,7 @@
 # .ps-rule/Baselines.Rule.yaml
 # PSRule Baseline resource - scopes the CI rule set to Security and Reliability
-# WAF pillars only.
+# WAF pillars only. Applies to ALL resource types in the module (not just networking)
+# - Key Vault, Storage, Log Analytics, Managed Identity etc. are all evaluated.
 #
 # Why not Operational Excellence / Cost / Performance?
 #  - Operational Excellence (147 rules): naming conventions, diagnostic settings -
@@ -13,15 +14,15 @@
 # failing checks (NSG lateral traversal, Firewall policy mode, VNet NSG coverage,
 # Storage replication/local auth, Log Analytics replication, VNG maintenance config).
 #
-# To reference this baseline: -Baseline 'Local.AzureNetworking' on Invoke-PSRule,
+# To reference this baseline: -Baseline 'Local.SecurityAndReliability' on Invoke-PSRule,
 # or set baseline.default in ps-rule.yaml.
 ---
 apiVersion: github.com/microsoft/PSRule/v1
 kind: Baseline
 metadata:
-  name: Local.AzureNetworking
+  name: Local.SecurityAndReliability
   annotations:
-    description: "CI baseline - Security + Reliability WAF pillars only"
+    description: "CI baseline - Security + Reliability WAF pillars only (all resource types)"
 spec:
   rule:
     tag:

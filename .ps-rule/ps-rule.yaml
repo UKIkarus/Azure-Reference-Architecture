@@ -35,7 +35,7 @@ binding:
 # Rule filtering is handled via a Baseline resource in .ps-rule/Baselines.Rule.yaml
 # (not yet created). For now, all applicable Azure.* rules are evaluated.
 
-# Baseline is applied via -Baseline 'Local.AzureNetworking' in _psrule-run.ps1.
+# Baseline is applied via -Baseline 'Local.SecurityAndReliability' in _psrule-run.ps1.
 # See .ps-rule/Baselines.Rule.yaml - baseline.default is not a valid PSRule v2 option.
 
 # ── Suppressions ─────────────────────────────────────────────────────────────
