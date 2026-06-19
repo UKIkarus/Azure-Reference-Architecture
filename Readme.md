@@ -75,13 +75,13 @@ To explore these architectures, you will need your own Azure Subscription. This 
 
 This repository is organized into modular, enterprise-grade reference architectures demonstrating core cloud capabilities and operational patterns. Each solution includes an IaC implementation (Bicep and/or Terraform), CI/CD examples, evidence artifacts, and a short runbook.
 
-| Solution | Primary Tech | Key Architectural Features |
-| :--- | :--- | :--- |
-| **[01-Core-Networking](./01-Core-Networking)** | Bicep/Terraform | Hub‑and‑Spoke, Azure Firewall, centralized egress and UDRs |
-| **[02-Identity-Governance](./02-Identity-Governance)** | Bicep/Terraform | Entra ID automation, PIM, Conditional Access, RBAC matrices |
-| **[03-Scalable-App-Zone](./03-Scalable-App-Zone)** | Bicep / Terraform | Private Endpoints, App Service VNet Integration, App GW/WAF |
-| **[04-Observability-Policy](./04-Observability-Policy)** | Bicep / Terraform | Central Log Analytics, diagnostic routing, Azure Policy enforcement |
-| **[05-MultiRegion-DR](./05-MultiRegion-DR)** | Bicep/Terraform | Cross‑region replication, Front Door routing, failover validation |
+| Solution | Primary Tech | Key Architectural Features | Screenshots |
+| :--- | :--- | :--- | :--- |
+| **[01-Core-Networking](./01-Core-Networking)** | Bicep/Terraform | Hub‑and‑Spoke, Azure Firewall, centralized egress and UDRs | ![Check out my successful workflow](images/Successful-workflow.png) |
+| **[02-Identity-Governance](./02-Identity-Governance)** | Bicep/Terraform | Entra ID automation, PIM, Conditional Access, RBAC matrices | |
+| **[03-Scalable-App-Zone](./03-Scalable-App-Zone)** | Bicep / Terraform | Private Endpoints, App Service VNet Integration, App GW/WAF | |
+| **[04-Observability-Policy](./04-Observability-Policy)** | Bicep / Terraform | Central Log Analytics, diagnostic routing, Azure Policy enforcement | |
+| **[05-MultiRegion-DR](./05-MultiRegion-DR)** | Bicep/Terraform | Cross‑region replication, Front Door routing, failover validation | |
 
 ## Architecture Principles
 
