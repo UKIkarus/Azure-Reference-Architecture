@@ -41,7 +41,7 @@
 
 ## About The Project
 
-This repository serves as a professional portfolio for Azure Solutions Architecture. It demonstrates the ability to design, deploy, and govern complex cloud environments using modern Infrastructure as Code (IaC) tools and DevOps practices. 🏗️
+This repository serves as a pesronal professional-grade portfolio for Azure Solutions Architecture. It demonstrates the ability to design, deploy, and govern complex cloud environments using modern Infrastructure as Code (IaC) tools and DevOps practices. 🏗️
 
 The primary goal is to provide **"Tangible Proof"** of architectural logic, focusing on:
 * **Tool Versatility:** Side-by-side implementations using both **Bicep** and **Terraform**.
